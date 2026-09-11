@@ -1,7 +1,8 @@
 import { fetchApi } from '@libs/fetch';
 import { Plugin } from '@/types/plugin';
 import { Filters, FilterTypes } from '@libs/filterInputs';
-import { defaultCover, NovelStatus } from '@libs/novelStatus';
+import { defaultCover } from '@libs/defaultCover';
+import { NovelStatus } from '@libs/novelStatus';
 
 interface CoteNovelMeta {
   id: string;
