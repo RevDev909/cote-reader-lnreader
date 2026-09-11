@@ -43,11 +43,11 @@ interface VolumeApiResponse {
 }
 
 class CoteReader implements Plugin.PluginBase {
-  id = 'cote-reader';
+  id = 'cotereader';
   name = 'COTE Reader';
   site = 'https://cote-reader.me';
   icon = 'src/en/cotereader/icon.png';
-  version = '1.0.2';
+  version = '1.0.3';
 
   private canonicalIds = new Set([
     'cote',
@@ -64,6 +64,19 @@ class CoteReader implements Plugin.PluginBase {
     'eightysix',
     'monogatari',
   ]);
+
+  private aliasMap: Record<string, string> = {
+    '4557': 'cote',
+    '3336': 'mushoku-tensei',
+    '3486': 'bunny-girl',
+    '1014': 'monogatari',
+    '3343': 'rezero',
+    '6547': 'eightysix',
+    '3580': 'tensura',
+    '3768': 'apothecary-diaries',
+    '10839': 'lotm',
+    '200298': '2958',
+  };
 
   private formatCover(cover?: string): string {
     if (!cover) return defaultCover;
@@ -96,12 +109,29 @@ class CoteReader implements Plugin.PluginBase {
 
     const data = (await res.json()) as { items?: CoteNovelMeta[] };
     const items = data.items || [];
+    const seenPaths = new Set<string>();
+    const seenTitles = new Set<string>();
+    const result: Plugin.NovelItem[] = [];
 
-    return items.map((novel) => ({
-      name: novel.title,
-      path: `/novel/${novel.id}`,
-      cover: this.formatCover(novel.cover),
-    }));
+    for (const novel of items) {
+      const targetId = this.aliasMap[novel.id] || novel.id;
+      const path = `/novel/${targetId}`;
+      const normTitle = novel.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      if (seenPaths.has(path) || seenTitles.has(normTitle)) {
+        continue;
+      }
+      seenPaths.add(path);
+      seenTitles.add(normTitle);
+
+      result.push({
+        name: novel.title,
+        path,
+        cover: this.formatCover(novel.cover),
+      });
+    }
+
+    return result;
   }
 
   async searchNovels(
@@ -116,16 +146,34 @@ class CoteReader implements Plugin.PluginBase {
 
     const data = (await res.json()) as { items?: CoteNovelMeta[] };
     const items = data.items || [];
+    const seenPaths = new Set<string>();
+    const seenTitles = new Set<string>();
+    const result: Plugin.NovelItem[] = [];
 
-    return items.map((novel) => ({
-      name: novel.title,
-      path: `/novel/${novel.id}`,
-      cover: this.formatCover(novel.cover),
-    }));
+    for (const novel of items) {
+      const targetId = this.aliasMap[novel.id] || novel.id;
+      const path = `/novel/${targetId}`;
+      const normTitle = novel.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      if (seenPaths.has(path) || seenTitles.has(normTitle)) {
+        continue;
+      }
+      seenPaths.add(path);
+      seenTitles.add(normTitle);
+
+      result.push({
+        name: novel.title,
+        path,
+        cover: this.formatCover(novel.cover),
+      });
+    }
+
+    return result;
   }
 
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
-    const id = this.cleanId(novelPath);
+    const rawId = this.cleanId(novelPath);
+    const id = this.aliasMap[rawId] || rawId;
     const metaUrl = `${this.site}/api/novels/${id}`;
     const res = await fetchApi(metaUrl);
 
@@ -161,7 +209,7 @@ class CoteReader implements Plugin.PluginBase {
       : undefined;
 
     return {
-      path: `/novel/${data.id || id}`,
+      path: novelPath,
       name: data.title,
       cover: this.formatCover(data.cover),
       summary: data.description,
@@ -209,6 +257,9 @@ class CoteReader implements Plugin.PluginBase {
       const volUrl = `${this.site}/api/novels/${id}/volume/${volumeId}`;
       const res = await fetchApi(volUrl);
       if (!res.ok) {
+        if (res.status === 503) {
+          throw new Error('Remote server is temporarily busy (HTTP 503). Please retry in a moment.');
+        }
         throw new Error(`Failed to fetch volume: HTTP ${res.status}`);
       }
 

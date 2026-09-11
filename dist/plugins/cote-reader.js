@@ -59,11 +59,11 @@ try {
 
 var CoteReader = /** @class */ (function () {
     function CoteReader() {
-        this.id = "cote-reader";
+        this.id = "cotereader";
         this.name = "COTE Reader";
         this.site = "https://cote-reader.me";
         this.icon = "src/en/cotereader/icon.png";
-        this.version = "1.0.2";
+        this.version = "1.0.3";
         this.canonicalIds = new Set([
             "cote",
             "lotm",
@@ -79,6 +79,18 @@ var CoteReader = /** @class */ (function () {
             "eightysix",
             "monogatari"
         ]);
+        this.aliasMap = {
+            "4557": "cote",
+            "3336": "mushoku-tensei",
+            "3486": "bunny-girl",
+            "1014": "monogatari",
+            "3343": "rezero",
+            "6547": "eightysix",
+            "3580": "tensura",
+            "3768": "apothecary-diaries",
+            "10839": "lotm",
+            "200298": "2958"
+        };
         this.filters = {
             tag: {
                 value: "",
@@ -123,7 +135,7 @@ var CoteReader = /** @class */ (function () {
 
     CoteReader.prototype.popularNovels = function (pageNo, options) {
         return __awaiter(this, void 0, void 0, function () {
-            var url, filters, res, data, items, self;
+            var url, filters, res, data, items, seenPaths, seenTitles, result, self, _i, items_1, novel, targetId, path, normTitle;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -142,14 +154,27 @@ var CoteReader = /** @class */ (function () {
                     case 2:
                         data = _a.sent();
                         items = data.items || [];
+                        seenPaths = new Set();
+                        seenTitles = new Set();
+                        result = [];
                         self = this;
-                        return [2 /*return*/, items.map(function (novel) {
-                            return {
+                        for (_i = 0, items_1 = items; _i < items_1.length; _i++) {
+                            novel = items_1[_i];
+                            targetId = self.aliasMap[novel.id] || novel.id;
+                            path = "/novel/" + targetId;
+                            normTitle = novel.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+                            if (seenPaths.has(path) || seenTitles.has(normTitle)) {
+                                continue;
+                            }
+                            seenPaths.add(path);
+                            seenTitles.add(normTitle);
+                            result.push({
                                 name: novel.title,
-                                path: "/novel/" + novel.id,
+                                path: path,
                                 cover: self.formatCover(novel.cover)
-                            };
-                        })];
+                            });
+                        }
+                        return [2 /*return*/, result];
                 }
             });
         });
@@ -157,7 +182,7 @@ var CoteReader = /** @class */ (function () {
 
     CoteReader.prototype.searchNovels = function (searchTerm, pageNo) {
         return __awaiter(this, void 0, void 0, function () {
-            var url, res, data, items, self;
+            var url, res, data, items, seenPaths, seenTitles, result, self, _i, items_2, novel, targetId, path, normTitle;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -172,14 +197,27 @@ var CoteReader = /** @class */ (function () {
                     case 2:
                         data = _a.sent();
                         items = data.items || [];
+                        seenPaths = new Set();
+                        seenTitles = new Set();
+                        result = [];
                         self = this;
-                        return [2 /*return*/, items.map(function (novel) {
-                            return {
+                        for (_i = 0, items_2 = items; _i < items_2.length; _i++) {
+                            novel = items_2[_i];
+                            targetId = self.aliasMap[novel.id] || novel.id;
+                            path = "/novel/" + targetId;
+                            normTitle = novel.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+                            if (seenPaths.has(path) || seenTitles.has(normTitle)) {
+                                continue;
+                            }
+                            seenPaths.add(path);
+                            seenTitles.add(normTitle);
+                            result.push({
                                 name: novel.title,
-                                path: "/novel/" + novel.id,
+                                path: path,
                                 cover: self.formatCover(novel.cover)
-                            };
-                        })];
+                            });
+                        }
+                        return [2 /*return*/, result];
                 }
             });
         });
@@ -187,11 +225,12 @@ var CoteReader = /** @class */ (function () {
 
     CoteReader.prototype.parseNovel = function (novelPath) {
         return __awaiter(this, void 0, void 0, function () {
-            var id, metaUrl, res, data, volumes, isCanonical, chapters, genres;
+            var rawId, id, metaUrl, res, data, volumes, isCanonical, chapters, genres;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        id = this.cleanId(novelPath);
+                        rawId = this.cleanId(novelPath);
+                        id = this.aliasMap[rawId] || rawId;
                         metaUrl = this.site + "/api/novels/" + id;
                         return [4 /*yield*/, fetchApi(metaUrl)];
                     case 1:
@@ -224,7 +263,7 @@ var CoteReader = /** @class */ (function () {
                                 ? data.genres.join(", ")
                                 : undefined;
                         return [2 /*return*/, {
-                            path: "/novel/" + (data.id || id),
+                            path: novelPath,
                             name: data.title,
                             cover: this.formatCover(data.cover),
                             summary: data.description,
@@ -284,6 +323,9 @@ var CoteReader = /** @class */ (function () {
                     case 4:
                         res = _b.sent();
                         if (!res.ok) {
+                            if (res.status === 503) {
+                                throw new Error("Remote server is temporarily busy (HTTP 503). Please retry in a moment.");
+                            }
                             throw new Error("Failed to fetch volume: HTTP " + res.status);
                         }
                         return [4 /*yield*/, res.json()];
