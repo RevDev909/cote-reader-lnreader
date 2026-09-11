@@ -63,7 +63,7 @@ var CoteReader = /** @class */ (function () {
         this.name = "COTE Reader";
         this.site = "https://cote-reader.me";
         this.icon = "src/en/cotereader/icon.png";
-        this.version = "1.0.5";
+        this.version = "1.0.6";
         this.canonicalIds = new Set([
             "cote",
             "lotm",

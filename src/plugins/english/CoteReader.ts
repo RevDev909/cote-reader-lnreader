@@ -47,7 +47,7 @@ class CoteReader implements Plugin.PluginBase {
   name = 'COTE Reader';
   site = 'https://cote-reader.me';
   icon = 'src/en/cotereader/icon.png';
-  version = '1.0.5';
+  version = '1.0.6';
 
   private canonicalIds = new Set([
     'cote',

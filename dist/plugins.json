@@ -4,8 +4,8 @@
     "name": "COTE Reader",
     "site": "https://cote-reader.me",
     "lang": "English",
-    "version": "1.0.5",
-    "url": "https://raw.githubusercontent.com/RevDev909/cote-reader-lnreader/main/dist/plugins/cote-reader.js",
+    "version": "1.0.6",
+    "url": "https://raw.githubusercontent.com/RevDev909/cote-reader-lnreader/main/dist/plugins/cote-reader.js?v=1.0.6",
     "iconUrl": "https://raw.githubusercontent.com/RevDev909/cote-reader-lnreader/main/dist/icon.png"
   }
 ]

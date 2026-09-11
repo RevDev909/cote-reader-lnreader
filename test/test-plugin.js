@@ -8,7 +8,7 @@ async function testSuite() {
   assert.strictEqual(plugin.id, 'cotereader');
   assert.strictEqual(plugin.name, 'COTE Reader');
   assert.strictEqual(plugin.site, 'https://cote-reader.me');
-  assert.strictEqual(plugin.version, '1.0.5');
+  assert.strictEqual(plugin.version, '1.0.6');
   assert.ok(plugin.filters.tag);
   console.log('✓ metadata validation');
 
