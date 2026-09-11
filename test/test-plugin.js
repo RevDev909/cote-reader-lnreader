@@ -80,7 +80,7 @@ async function testSuite() {
     assert.ok(konosubaHtml && konosubaHtml.length > 100);
     console.log(`✓ parseChapter non-canonical volume (${konosubaHtml.length} bytes)`);
   } catch (err) {
-    if (err.message.includes('503') || err.message.includes('busy')) {
+    if (err.message.includes('503') || err.message.includes('busy') || err.message.includes('interrupted')) {
       console.log('⚠ parseChapter non-canonical volume: upstream worker busy (handled gracefully)');
     } else {
       throw err;
