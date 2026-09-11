@@ -1,0 +1,22 @@
+{
+  "name": "cote-reader-lnreader",
+  "version": "1.0.0",
+  "description": "LNReader source plugin for cote-reader.me",
+  "main": "dist/plugins/cote-reader.js",
+  "scripts": {
+    "test": "node test/test-plugin.js",
+    "serve": "node serve.js"
+  },
+  "keywords": [
+    "lnreader",
+    "lnreader-plugin",
+    "light-novel",
+    "cote"
+  ],
+  "author": "RevDev909",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RevDev909/cote-reader-lnreader.git"
+  }
+}
