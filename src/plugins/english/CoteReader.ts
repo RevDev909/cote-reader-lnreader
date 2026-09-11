@@ -47,7 +47,7 @@ class CoteReader implements Plugin.PluginBase {
   name = 'COTE Reader';
   site = 'https://cote-reader.me';
   icon = 'src/en/cotereader/icon.png';
-  version = '1.0.1';
+  version = '1.0.2';
 
   private canonicalIds = new Set([
     'cote',
@@ -138,14 +138,17 @@ class CoteReader implements Plugin.PluginBase {
     const isCanonical = this.canonicalIds.has(id.toLowerCase());
 
     const chapters: Plugin.ChapterItem[] = volumes.map((volume, index) => {
-      const position = volume.position || index + 1;
-      const title = volume.title || `Volume ${position}`;
+      const position = index + 1;
+      const numStr = String(position).padStart(2, '0');
+      const rawTitle = volume.title || `Volume ${position}`;
+      const name = `Vol. ${numStr}: ${rawTitle}`;
+
       const path = isCanonical
         ? `/canonical/${id}/${volume.id}`
         : `/api/novels/${id}/volume/${volume.id}`;
 
       return {
-        name: title,
+        name,
         path,
         chapterNumber: position,
       };

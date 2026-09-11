@@ -63,7 +63,7 @@ var CoteReader = /** @class */ (function () {
         this.name = "COTE Reader";
         this.site = "https://cote-reader.me";
         this.icon = "src/en/cotereader/icon.png";
-        this.version = "1.0.1";
+        this.version = "1.0.2";
         this.canonicalIds = new Set([
             "cote",
             "lotm",
@@ -187,7 +187,7 @@ var CoteReader = /** @class */ (function () {
 
     CoteReader.prototype.parseNovel = function (novelPath) {
         return __awaiter(this, void 0, void 0, function () {
-            var id, metaUrl, res, data, volumes, isCanonical, self, chapters, genres;
+            var id, metaUrl, res, data, volumes, isCanonical, chapters, genres;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -204,15 +204,16 @@ var CoteReader = /** @class */ (function () {
                         data = _a.sent();
                         volumes = data.volumes || [];
                         isCanonical = this.canonicalIds.has(id.toLowerCase());
-                        self = this;
                         chapters = volumes.map(function (volume, index) {
-                            var position = volume.position || index + 1;
-                            var title = volume.title || ("Volume " + position);
+                            var position = index + 1;
+                            var numStr = String(position).padStart(2, "0");
+                            var rawTitle = volume.title || ("Volume " + position);
+                            var name = "Vol. " + numStr + ": " + rawTitle;
                             var path = isCanonical
                                 ? "/canonical/" + id + "/" + volume.id
                                 : "/api/novels/" + id + "/volume/" + volume.id;
                             return {
-                                name: title,
+                                name: name,
                                 path: path,
                                 chapterNumber: position
                             };
