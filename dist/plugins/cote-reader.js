@@ -12,7 +12,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 
 Object.defineProperty(exports, "__esModule", { value: true });
 
-// Safe imports with fallbacks
 var fetchApi;
 try {
     fetchApi = require("@libs/fetch").fetchApi;
@@ -64,8 +63,7 @@ var CoteReader = /** @class */ (function () {
         this.name = "COTE Reader";
         this.site = "https://cote-reader.me";
         this.icon = "src/en/cotereader/icon.png";
-        this.version = "1.0.0";
-        this.novelCache = new Map();
+        this.version = "1.0.1";
         this.canonicalIds = new Set([
             "cote",
             "lotm",
@@ -189,7 +187,7 @@ var CoteReader = /** @class */ (function () {
 
     CoteReader.prototype.parseNovel = function (novelPath) {
         return __awaiter(this, void 0, void 0, function () {
-            var id, metaUrl, res, data, volumes, totalPages, initialChapters, firstPage, genres;
+            var id, metaUrl, res, data, volumes, isCanonical, self, chapters, genres;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -204,17 +202,21 @@ var CoteReader = /** @class */ (function () {
                         return [4 /*yield*/, res.json()];
                     case 2:
                         data = _a.sent();
-                        this.novelCache.set(id, data);
                         volumes = data.volumes || [];
-                        totalPages = Math.max(1, volumes.length);
-                        initialChapters = [];
-                        if (!(totalPages > 0)) return [3 /*break*/, 4];
-                        return [4 /*yield*/, this.parsePage(novelPath, "1")];
-                    case 3:
-                        firstPage = _a.sent();
-                        initialChapters = firstPage.chapters;
-                        _a.label = 4;
-                    case 4:
+                        isCanonical = this.canonicalIds.has(id.toLowerCase());
+                        self = this;
+                        chapters = volumes.map(function (volume, index) {
+                            var position = volume.position || index + 1;
+                            var title = volume.title || ("Volume " + position);
+                            var path = isCanonical
+                                ? "/canonical/" + id + "/" + volume.id
+                                : "/api/novels/" + id + "/volume/" + volume.id;
+                            return {
+                                name: title,
+                                path: path,
+                                chapterNumber: position
+                            };
+                        });
                         genres = Array.isArray(data.tags)
                             ? data.tags.join(", ")
                             : Array.isArray(data.genres)
@@ -228,83 +230,8 @@ var CoteReader = /** @class */ (function () {
                             author: data.author,
                             genres: genres,
                             status: NovelStatus.Ongoing,
-                            totalPages: totalPages,
-                            chapters: initialChapters
+                            chapters: chapters
                         }];
-                }
-            });
-        });
-    };
-
-    CoteReader.prototype.parsePage = function (novelPath, page) {
-        return __awaiter(this, void 0, void 0, function () {
-            var id, novelMeta, res, volumes, pageNum, volIndex, volume, chapters, isCanonical, cacheUrl, res_1, json, keys, _i, keys_1, key, item, volApiUrl, res_2, volData, toc, _a, toc_1, item;
-            return __generator(this, function (_b) {
-                switch (_b.label) {
-                    case 0:
-                        id = this.cleanId(novelPath);
-                        novelMeta = this.novelCache.get(id);
-                        if (!!novelMeta) return [3 /*break*/, 3];
-                        return [4 /*yield*/, fetchApi(this.site + "/api/novels/" + id)];
-                    case 1:
-                        res = _b.sent();
-                        if (!res.ok) return [3 /*break*/, 3];
-                        return [4 /*yield*/, res.json()];
-                    case 2:
-                        novelMeta = _b.sent();
-                        this.novelCache.set(id, novelMeta);
-                        _b.label = 3;
-                    case 3:
-                        volumes = (novelMeta && novelMeta.volumes) || [];
-                        pageNum = parseInt(page, 10);
-                        volIndex = isNaN(pageNum) || pageNum < 1 ? 0 : pageNum - 1;
-                        volume = volumes[volIndex];
-                        if (!volume) {
-                            return [2 /*return*/, { chapters: [] }];
-                        }
-                        chapters = [];
-                        isCanonical = this.canonicalIds.has(id.toLowerCase());
-                        if (!isCanonical) return [3 /*break*/, 6];
-                        cacheUrl = this.site + "/assets/cache/" + id + "/" + volume.id + ".json";
-                        return [4 /*yield*/, fetchApi(cacheUrl)];
-                    case 4:
-                        res_1 = _b.sent();
-                        if (!res_1.ok) return [3 /*break*/, 6];
-                        return [4 /*yield*/, res_1.json()];
-                    case 5:
-                        json = _b.sent();
-                        keys = Object.keys(json).sort(function (a, b) { return Number(a) - Number(b); });
-                        for (_i = 0, keys_1 = keys; _i < keys_1.length; _i++) {
-                            key = keys_1[_i];
-                            item = json[key];
-                            chapters.push({
-                                name: volume.title + " - " + (item.title || "Chapter " + key),
-                                path: "/canonical/" + id + "/" + volume.id + "/" + key,
-                                chapterNumber: Number(key)
-                            });
-                        }
-                        return [2 /*return*/, { chapters: chapters }];
-                    case 6:
-                        volApiUrl = this.site + "/api/novels/" + id + "/volume/" + volume.id;
-                        return [4 /*yield*/, fetchApi(volApiUrl)];
-                    case 7:
-                        res_2 = _b.sent();
-                        if (!res_2.ok) return [3 /*break*/, 9];
-                        return [4 /*yield*/, res_2.json()];
-                    case 8:
-                        volData = _b.sent();
-                        toc = volData.toc || [];
-                        for (_a = 0, toc_1 = toc; _a < toc_1.length; _a++) {
-                            item = toc_1[_a];
-                            chapters.push({
-                                name: volume.title + " - " + item.title,
-                                path: "/api/novels/" + id + "/volume/" + volume.id + "/" + item.chapterIndex,
-                                chapterNumber: item.chapterIndex
-                            });
-                        }
-                        _b.label = 9;
-                    case 9:
-                        return [2 /*return*/, { chapters: chapters }];
                 }
             });
         });
@@ -312,8 +239,7 @@ var CoteReader = /** @class */ (function () {
 
     CoteReader.prototype.parseChapter = function (chapterPath) {
         return __awaiter(this, void 0, void 0, function () {
-            var rawHtml, parts, id, volumeId, chapterKey, cacheUrl, res, json, parts, id, volumeId, chapterIndex, volUrl, res, volData, res;
-            var _a;
+            var rawHtml, parts, id, volumeId, chapterKey, cacheUrl, res, json, keys, parts, id, volumeId, chapterIndex, volUrl, res, volData, chaptersObj, toc, keys, res;
             return __generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -328,12 +254,23 @@ var CoteReader = /** @class */ (function () {
                     case 1:
                         res = _b.sent();
                         if (!res.ok) {
-                            throw new Error("Failed to fetch chapter: HTTP " + res.status);
+                            throw new Error("Failed to fetch volume: HTTP " + res.status);
                         }
                         return [4 /*yield*/, res.json()];
                     case 2:
                         json = _b.sent();
-                        rawHtml = (json[chapterKey] && json[chapterKey].content) || "";
+                        if (chapterKey && json[chapterKey]) {
+                            rawHtml = json[chapterKey].content || "";
+                        } else {
+                            keys = Object.keys(json).sort(function (a, b) { return Number(a) - Number(b); });
+                            rawHtml = keys
+                                .map(function (k) {
+                                    var item = json[k];
+                                    var title = item.title || ("Chapter " + k);
+                                    return '<section class="volume-chapter"><h2 class="volume-chapter-title">' + title + '</h2>' + (item.content || "") + '</section>';
+                                })
+                                .join('\n<hr class="volume-divider" />\n');
+                        }
                         return [3 /*break*/, 9];
                     case 3:
                         if (!chapterPath.startsWith("/api/novels/")) return [3 /*break*/, 6];
@@ -346,12 +283,33 @@ var CoteReader = /** @class */ (function () {
                     case 4:
                         res = _b.sent();
                         if (!res.ok) {
-                            throw new Error("Failed to fetch chapter: HTTP " + res.status);
+                            throw new Error("Failed to fetch volume: HTTP " + res.status);
                         }
                         return [4 /*yield*/, res.json()];
                     case 5:
                         volData = _b.sent();
-                        rawHtml = (((_a = volData.chapters) === null || _a === void 0 ? void 0 : _a[chapterIndex]) && volData.chapters[chapterIndex].content) || "";
+                        if (chapterIndex && volData.chapters && volData.chapters[chapterIndex]) {
+                            rawHtml = volData.chapters[chapterIndex].content || "";
+                        } else {
+                            chaptersObj = volData.chapters || {};
+                            toc = volData.toc || [];
+                            if (toc.length > 0) {
+                                rawHtml = toc
+                                    .map(function (item) {
+                                        var ch = chaptersObj[item.chapterIndex];
+                                        return '<section class="volume-chapter"><h2 class="volume-chapter-title">' + item.title + '</h2>' + ((ch && ch.content) || "") + '</section>';
+                                    })
+                                    .join('\n<hr class="volume-divider" />\n');
+                            } else {
+                                keys = Object.keys(chaptersObj).sort(function (a, b) { return Number(a) - Number(b); });
+                                rawHtml = keys
+                                    .map(function (k) {
+                                        var ch = chaptersObj[k];
+                                        return '<section class="volume-chapter">' + ((ch && ch.content) || "") + '</section>';
+                                    })
+                                    .join('\n<hr class="volume-divider" />\n');
+                            }
+                        }
                         return [3 /*break*/, 9];
                     case 6:
                         return [4 /*yield*/, fetchApi(chapterPath.startsWith("http") ? chapterPath : "" + this.site + chapterPath)];
@@ -379,7 +337,6 @@ var CoteReader = /** @class */ (function () {
     return CoteReader;
 }());
 
-// Generator helper polyfill
 var __generator = (this && this.__generator) || function (thisArg, body) {
     var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
     return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
