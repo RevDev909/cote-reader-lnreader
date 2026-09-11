@@ -47,7 +47,7 @@ class CoteReader implements Plugin.PluginBase {
   name = 'COTE Reader';
   site = 'https://cote-reader.me';
   icon = 'src/en/cotereader/icon.png';
-  version = '1.0.4';
+  version = '1.0.5';
 
   private canonicalIds = new Set([
     'cote',
@@ -93,6 +93,21 @@ class CoteReader implements Plugin.PluginBase {
       .trim();
   }
 
+  private async safeJson<T>(res: Response): Promise<T> {
+    const text = await res.text();
+    if (!text || !text.trim()) {
+      throw new Error('Received empty response from server. Please retry in a moment.');
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch (e) {
+      if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+        throw new Error('Server returned an error page instead of novel content. Please retry.');
+      }
+      throw new Error('Stream interrupted by server (unexpected end of input). Retrying...');
+    }
+  }
+
   async popularNovels(
     pageNo: number,
     { filters }: Plugin.PopularNovelsOptions<typeof this.filters>,
@@ -107,7 +122,7 @@ class CoteReader implements Plugin.PluginBase {
       throw new Error(`Failed to load popular novels: HTTP ${res.status}`);
     }
 
-    const data = (await res.json()) as { items?: CoteNovelMeta[] };
+    const data = await this.safeJson<{ items?: CoteNovelMeta[] }>(res);
     const items = data.items || [];
     const seenPaths = new Set<string>();
     const seenTitles = new Set<string>();
@@ -144,7 +159,7 @@ class CoteReader implements Plugin.PluginBase {
       throw new Error(`Failed to search novels: HTTP ${res.status}`);
     }
 
-    const data = (await res.json()) as { items?: CoteNovelMeta[] };
+    const data = await this.safeJson<{ items?: CoteNovelMeta[] }>(res);
     const items = data.items || [];
     const seenPaths = new Set<string>();
     const seenTitles = new Set<string>();
@@ -181,7 +196,53 @@ class CoteReader implements Plugin.PluginBase {
       throw new Error(`Failed to load novel metadata: HTTP ${res.status}`);
     }
 
-    const data = (await res.json()) as CoteNovelMeta;
+    const data = await this.safeJson<CoteNovelMeta>(res);
+    const genres = Array.isArray(data.tags)
+      ? data.tags.join(', ')
+      : Array.isArray(data.genres)
+      ? data.genres.join(', ')
+      : undefined;
+
+    // Special handling for webnovels with dedicated chapter summary files (ORV & World)
+    if (id === 'orv' || id === 'world') {
+      try {
+        const sumUrl = `${this.site}/assets/${id}/summary.json`;
+        const sumRes = await fetchApi(sumUrl);
+        if (sumRes.ok) {
+          const summary = await this.safeJson<{
+            mainChapters?: Array<{ id: string; title: string }>;
+            contChapters?: Array<{ id: string; title: string }>;
+            sideChapters?: Array<{ id: string; title: string }>;
+          }>(sumRes);
+
+          const allChs = [
+            ...(summary.mainChapters || []),
+            ...(summary.contChapters || []),
+            ...(summary.sideChapters || []),
+          ];
+
+          if (allChs.length > 0) {
+            const chapters: Plugin.ChapterItem[] = allChs.map((ch, idx) => ({
+              name: ch.title,
+              path: `/webnovel/${id}/${ch.id}`,
+              chapterNumber: idx + 1,
+            }));
+
+            return {
+              path: novelPath,
+              name: data.title,
+              cover: this.formatCover(data.cover),
+              summary: data.description,
+              author: data.author,
+              genres,
+              status: NovelStatus.Ongoing,
+              chapters,
+            };
+          }
+        }
+      } catch (e) {}
+    }
+
     const volumes = data.volumes || [];
     const isCanonical = this.canonicalIds.has(id.toLowerCase());
 
@@ -202,12 +263,6 @@ class CoteReader implements Plugin.PluginBase {
       };
     });
 
-    const genres = Array.isArray(data.tags)
-      ? data.tags.join(', ')
-      : Array.isArray(data.genres)
-      ? data.genres.join(', ')
-      : undefined;
-
     return {
       path: novelPath,
       name: data.title,
@@ -223,7 +278,20 @@ class CoteReader implements Plugin.PluginBase {
   async parseChapter(chapterPath: string): Promise<string> {
     let rawHtml = '';
 
-    if (chapterPath.startsWith('/canonical/')) {
+    if (chapterPath.startsWith('/webnovel/')) {
+      const parts = chapterPath.replace(/^\/webnovel\//, '').split('/');
+      const id = parts[0];
+      const chapterId = parts[1];
+
+      const chUrl = `${this.site}/assets/${id}/chapters/${chapterId}.json`;
+      const res = await fetchApi(chUrl);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch chapter: HTTP ${res.status}`);
+      }
+
+      const chData = await this.safeJson<{ contentHtml?: string; content?: string }>(res);
+      rawHtml = chData.contentHtml || chData.content || '';
+    } else if (chapterPath.startsWith('/canonical/')) {
       const parts = chapterPath.replace(/^\/canonical\//, '').split('/');
       const id = parts[0];
       const volumeId = parts[1];
@@ -232,10 +300,13 @@ class CoteReader implements Plugin.PluginBase {
       const cacheUrl = `${this.site}/assets/cache/${id}/${volumeId}.json`;
       const res = await fetchApi(cacheUrl);
       if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('This volume is not yet available on COTE Reader (HTTP 404).');
+        }
         throw new Error(`Failed to fetch volume: HTTP ${res.status}`);
       }
 
-      const json = (await res.json()) as Record<string, { title?: string; content?: string }>;
+      const json = await this.safeJson<Record<string, { title?: string; content?: string }>>(res);
       if (chapterKey && json[chapterKey]) {
         rawHtml = json[chapterKey].content || '';
       } else {
@@ -255,24 +326,39 @@ class CoteReader implements Plugin.PluginBase {
       const chapterIndex = parts[3];
 
       const volUrl = `${this.site}/api/novels/${id}/volume/${volumeId}`;
-      let res = await fetchApi(volUrl);
-      if (res.status === 503) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        res = await fetchApi(volUrl);
-        if (res.status === 503) {
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-          res = await fetchApi(volUrl);
+      let lastErr: any = null;
+      let volData: VolumeApiResponse | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const res = await fetchApi(volUrl);
+          if (res.status === 503) {
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+            continue;
+          }
+          if (!res.ok) {
+            throw new Error(`Failed to fetch volume: HTTP ${res.status}`);
+          }
+          volData = await this.safeJson<VolumeApiResponse>(res);
+          break;
+        } catch (e: any) {
+          lastErr = e;
+          if (attempt < 2) {
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          }
         }
       }
 
-      if (!res.ok) {
-        if (res.status === 503) {
+      if (!volData) {
+        if (lastErr?.message?.includes('503')) {
           throw new Error('Remote server is busy (HTTP 503: Cloudflare Worker limit). Please retry in a moment.');
         }
-        throw new Error(`Failed to fetch volume: HTTP ${res.status}`);
+        throw (
+          lastErr ||
+          new Error('Failed to load volume: Connection was interrupted. Please retry in a moment.')
+        );
       }
 
-      const volData = (await res.json()) as VolumeApiResponse;
       if (chapterIndex && volData.chapters?.[chapterIndex]) {
         rawHtml = volData.chapters[chapterIndex].content || '';
       } else {

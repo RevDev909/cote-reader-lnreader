@@ -1,15 +1,5 @@
 "use strict";
 
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-
 Object.defineProperty(exports, "__esModule", { value: true });
 
 var fetchApi;
@@ -57,13 +47,14 @@ try {
     }
 } catch (e) {}
 
-var CoteReader = /** @class */ (function () {
-    function CoteReader() {
+class CoteReader {
+    constructor() {
         this.id = "cotereader";
         this.name = "COTE Reader";
         this.site = "https://cote-reader.me";
         this.icon = "src/en/cotereader/icon.png";
-        this.version = "1.0.4";
+        this.version = "1.0.5";
+
         this.canonicalIds = new Set([
             "cote",
             "lotm",
@@ -79,6 +70,7 @@ var CoteReader = /** @class */ (function () {
             "eightysix",
             "monogatari"
         ]);
+
         this.aliasMap = {
             "4557": "cote",
             "3336": "mushoku-tensei",
@@ -91,6 +83,7 @@ var CoteReader = /** @class */ (function () {
             "10839": "lotm",
             "200298": "2958"
         };
+
         this.filters = {
             tag: {
                 value: "",
@@ -118,151 +111,138 @@ var CoteReader = /** @class */ (function () {
         };
     }
 
-    CoteReader.prototype.formatCover = function (cover) {
+    formatCover(cover) {
         if (!cover) return defaultCover;
         if (cover.startsWith("http://") || cover.startsWith("https://")) return cover;
-        if (cover.startsWith("/")) return "" + this.site + cover;
+        if (cover.startsWith("/")) return this.site + cover;
         return this.site + "/" + cover;
-    };
+    }
 
-    CoteReader.prototype.cleanId = function (novelPath) {
+    cleanId(novelPath) {
         return novelPath
             .replace(/^\/?novel\//i, "")
             .replace(/^\//, "")
             .split("/")[0]
             .trim();
-    };
+    }
 
-    CoteReader.prototype.popularNovels = function (pageNo, options) {
-        return __awaiter(this, void 0, void 0, function () {
-            var url, filters, res, data, items, seenPaths, seenTitles, result, self, _i, items_1, novel, targetId, path, normTitle;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        url = this.site + "/api/novels?page=" + pageNo + "&limit=20";
-                        filters = options && options.filters;
-                        if (filters && filters.tag && filters.tag.value) {
-                            url += "&tag=" + encodeURIComponent(filters.tag.value);
-                        }
-                        return [4 /*yield*/, fetchApi(url)];
-                    case 1:
-                        res = _a.sent();
-                        if (!res.ok) {
-                            throw new Error("Failed to load popular novels: HTTP " + res.status);
-                        }
-                        return [4 /*yield*/, res.json()];
-                    case 2:
-                        data = _a.sent();
-                        items = data.items || [];
-                        seenPaths = new Set();
-                        seenTitles = new Set();
-                        result = [];
-                        self = this;
-                        for (_i = 0, items_1 = items; _i < items_1.length; _i++) {
-                            novel = items_1[_i];
-                            targetId = self.aliasMap[novel.id] || novel.id;
-                            path = "/novel/" + targetId;
-                            normTitle = novel.title.toLowerCase().replace(/[^a-z0-9]/g, "");
-                            if (seenPaths.has(path) || seenTitles.has(normTitle)) {
-                                continue;
-                            }
-                            seenPaths.add(path);
-                            seenTitles.add(normTitle);
-                            result.push({
-                                name: novel.title,
-                                path: path,
-                                cover: self.formatCover(novel.cover)
-                            });
-                        }
-                        return [2 /*return*/, result];
-                }
+    async safeJson(res) {
+        const text = await res.text();
+        if (!text || !text.trim()) {
+            throw new Error("Received empty response from server. Please retry in a moment.");
+        }
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+                throw new Error("Server returned an error page instead of novel content. Please retry.");
+            }
+            throw new Error("Stream interrupted by server (unexpected end of input). Retrying...");
+        }
+    }
+
+    async popularNovels(pageNo, options) {
+        let url = this.site + "/api/novels?page=" + pageNo + "&limit=20";
+        const filters = options && options.filters;
+        if (filters && filters.tag && filters.tag.value) {
+            url += "&tag=" + encodeURIComponent(filters.tag.value);
+        }
+
+        const res = await fetchApi(url);
+        if (!res.ok) {
+            throw new Error("Failed to load popular novels: HTTP " + res.status);
+        }
+
+        const data = await this.safeJson(res);
+        const items = data.items || [];
+        const seenPaths = new Set();
+        const seenTitles = new Set();
+        const result = [];
+
+        for (const novel of items) {
+            const targetId = this.aliasMap[novel.id] || novel.id;
+            const path = "/novel/" + targetId;
+            const normTitle = novel.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (seenPaths.has(path) || seenTitles.has(normTitle)) {
+                continue;
+            }
+            seenPaths.add(path);
+            seenTitles.add(normTitle);
+            result.push({
+                name: novel.title,
+                path: path,
+                cover: this.formatCover(novel.cover)
             });
-        });
-    };
+        }
+        return result;
+    }
 
-    CoteReader.prototype.searchNovels = function (searchTerm, pageNo) {
-        return __awaiter(this, void 0, void 0, function () {
-            var url, res, data, items, seenPaths, seenTitles, result, self, _i, items_2, novel, targetId, path, normTitle;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        url = this.site + "/api/novels?q=" + encodeURIComponent(searchTerm) + "&page=" + pageNo + "&limit=20";
-                        return [4 /*yield*/, fetchApi(url)];
-                    case 1:
-                        res = _a.sent();
-                        if (!res.ok) {
-                            throw new Error("Failed to search novels: HTTP " + res.status);
-                        }
-                        return [4 /*yield*/, res.json()];
-                    case 2:
-                        data = _a.sent();
-                        items = data.items || [];
-                        seenPaths = new Set();
-                        seenTitles = new Set();
-                        result = [];
-                        self = this;
-                        for (_i = 0, items_2 = items; _i < items_2.length; _i++) {
-                            novel = items_2[_i];
-                            targetId = self.aliasMap[novel.id] || novel.id;
-                            path = "/novel/" + targetId;
-                            normTitle = novel.title.toLowerCase().replace(/[^a-z0-9]/g, "");
-                            if (seenPaths.has(path) || seenTitles.has(normTitle)) {
-                                continue;
-                            }
-                            seenPaths.add(path);
-                            seenTitles.add(normTitle);
-                            result.push({
-                                name: novel.title,
-                                path: path,
-                                cover: self.formatCover(novel.cover)
-                            });
-                        }
-                        return [2 /*return*/, result];
-                }
+    async searchNovels(searchTerm, pageNo) {
+        const url = this.site + "/api/novels?q=" + encodeURIComponent(searchTerm) + "&page=" + pageNo + "&limit=20";
+        const res = await fetchApi(url);
+        if (!res.ok) {
+            throw new Error("Failed to search novels: HTTP " + res.status);
+        }
+
+        const data = await this.safeJson(res);
+        const items = data.items || [];
+        const seenPaths = new Set();
+        const seenTitles = new Set();
+        const result = [];
+
+        for (const novel of items) {
+            const targetId = this.aliasMap[novel.id] || novel.id;
+            const path = "/novel/" + targetId;
+            const normTitle = novel.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (seenPaths.has(path) || seenTitles.has(normTitle)) {
+                continue;
+            }
+            seenPaths.add(path);
+            seenTitles.add(normTitle);
+            result.push({
+                name: novel.title,
+                path: path,
+                cover: this.formatCover(novel.cover)
             });
-        });
-    };
+        }
+        return result;
+    }
 
-    CoteReader.prototype.parseNovel = function (novelPath) {
-        return __awaiter(this, void 0, void 0, function () {
-            var rawId, id, metaUrl, res, data, volumes, isCanonical, chapters, genres;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        rawId = this.cleanId(novelPath);
-                        id = this.aliasMap[rawId] || rawId;
-                        metaUrl = this.site + "/api/novels/" + id;
-                        return [4 /*yield*/, fetchApi(metaUrl)];
-                    case 1:
-                        res = _a.sent();
-                        if (!res.ok) {
-                            throw new Error("Failed to load novel metadata: HTTP " + res.status);
-                        }
-                        return [4 /*yield*/, res.json()];
-                    case 2:
-                        data = _a.sent();
-                        volumes = data.volumes || [];
-                        isCanonical = this.canonicalIds.has(id.toLowerCase());
-                        chapters = volumes.map(function (volume, index) {
-                            var position = index + 1;
-                            var numStr = String(position).padStart(2, "0");
-                            var rawTitle = volume.title || ("Volume " + position);
-                            var name = "Vol. " + numStr + ": " + rawTitle;
-                            var path = isCanonical
-                                ? "/canonical/" + id + "/" + volume.id
-                                : "/api/novels/" + id + "/volume/" + volume.id;
-                            return {
-                                name: name,
-                                path: path,
-                                chapterNumber: position
-                            };
-                        });
-                        genres = Array.isArray(data.tags)
-                            ? data.tags.join(", ")
-                            : Array.isArray(data.genres)
-                                ? data.genres.join(", ")
-                                : undefined;
-                        return [2 /*return*/, {
+    async parseNovel(novelPath) {
+        const rawId = this.cleanId(novelPath);
+        const id = this.aliasMap[rawId] || rawId;
+        const metaUrl = this.site + "/api/novels/" + id;
+        const res = await fetchApi(metaUrl);
+        if (!res.ok) {
+            throw new Error("Failed to load novel metadata: HTTP " + res.status);
+        }
+
+        const data = await this.safeJson(res);
+        const genres = Array.isArray(data.tags)
+            ? data.tags.join(", ")
+            : Array.isArray(data.genres)
+            ? data.genres.join(", ")
+            : undefined;
+
+        // Special handling for webnovels with dedicated chapter summary files (ORV & World)
+        if (id === "orv" || id === "world") {
+            try {
+                const sumUrl = this.site + "/assets/" + id + "/summary.json";
+                const sumRes = await fetchApi(sumUrl);
+                if (sumRes.ok) {
+                    const summary = await this.safeJson(sumRes);
+                    const allChs = [
+                        ...(summary.mainChapters || []),
+                        ...(summary.contChapters || []),
+                        ...(summary.sideChapters || [])
+                    ];
+                    if (allChs.length > 0) {
+                        const chapters = allChs.map((ch, idx) => ({
+                            name: ch.title,
+                            path: "/webnovel/" + id + "/" + ch.id,
+                            chapterNumber: idx + 1
+                        }));
+                        return {
                             path: novelPath,
                             name: data.title,
                             cover: this.formatCover(data.cover),
@@ -271,151 +251,158 @@ var CoteReader = /** @class */ (function () {
                             genres: genres,
                             status: NovelStatus.Ongoing,
                             chapters: chapters
-                        }];
+                        };
+                    }
                 }
-            });
-        });
-    };
+            } catch (e) {}
+        }
 
-    CoteReader.prototype.parseChapter = function (chapterPath) {
-        return __awaiter(this, void 0, void 0, function () {
-            var rawHtml, parts, id, volumeId, chapterKey, cacheUrl, res, json, keys, parts, id, volumeId, chapterIndex, volUrl, res, volData, chaptersObj, toc, keys, res;
-            return __generator(this, function (_b) {
-                switch (_b.label) {
-                    case 0:
-                        rawHtml = "";
-                        if (!chapterPath.startsWith("/canonical/")) return [3 /*break*/, 3];
-                        parts = chapterPath.replace(/^\/canonical\//, "").split("/");
-                        id = parts[0];
-                        volumeId = parts[1];
-                        chapterKey = parts[2];
-                        cacheUrl = this.site + "/assets/cache/" + id + "/" + volumeId + ".json";
-                        return [4 /*yield*/, fetchApi(cacheUrl)];
-                    case 1:
-                        res = _b.sent();
-                        if (!res.ok) {
-                            throw new Error("Failed to fetch volume: HTTP " + res.status);
-                        }
-                        return [4 /*yield*/, res.json()];
-                    case 2:
-                        json = _b.sent();
-                        if (chapterKey && json[chapterKey]) {
-                            rawHtml = json[chapterKey].content || "";
-                        } else {
-                            keys = Object.keys(json).sort(function (a, b) { return Number(a) - Number(b); });
-                            rawHtml = keys
-                                .map(function (k) {
-                                    var item = json[k];
-                                    var title = item.title || ("Chapter " + k);
-                                    return '<section class="volume-chapter"><h2 class="volume-chapter-title">' + title + '</h2>' + (item.content || "") + '</section>';
-                                })
-                                .join('\n<hr class="volume-divider" />\n');
-                        }
-                        return [3 /*break*/, 9];
-                    case 3:
-                        if (!chapterPath.startsWith("/api/novels/")) return [3 /*break*/, 6];
-                        parts = chapterPath.replace(/^\/api\/novels\//, "").split("/");
-                        id = parts[0];
-                        volumeId = parts[2];
-                        chapterIndex = parts[3];
-                        volUrl = this.site + "/api/novels/" + id + "/volume/" + volumeId;
-                        return [4 /*yield*/, fetchApi(volUrl)];
-                    case 4:
-                        res = _b.sent();
-                        if (!(res.status === 503)) return [3 /*break*/, 7];
-                        return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, 1000); })];
-                    case 5:
-                        _b.sent();
-                        return [4 /*yield*/, fetchApi(volUrl)];
-                    case 6:
-                        res = _b.sent();
-                        _b.label = 7;
-                    case 7:
-                        if (!res.ok) {
-                            if (res.status === 503) {
-                                throw new Error("Remote server is busy (HTTP 503: Cloudflare Worker limit). Please retry in a moment.");
-                            }
-                            throw new Error("Failed to fetch volume: HTTP " + res.status);
-                        }
-                        return [4 /*yield*/, res.json()];
-                    case 8:
-                        volData = _b.sent();
-                        if (chapterIndex && volData.chapters && volData.chapters[chapterIndex]) {
-                            rawHtml = volData.chapters[chapterIndex].content || "";
-                        } else {
-                            chaptersObj = volData.chapters || {};
-                            toc = volData.toc || [];
-                            if (toc.length > 0) {
-                                rawHtml = toc
-                                    .map(function (item) {
-                                        var ch = chaptersObj[item.chapterIndex];
-                                        return '<section class="volume-chapter"><h2 class="volume-chapter-title">' + item.title + '</h2>' + ((ch && ch.content) || "") + '</section>';
-                                    })
-                                    .join('\n<hr class="volume-divider" />\n');
-                            } else {
-                                keys = Object.keys(chaptersObj).sort(function (a, b) { return Number(a) - Number(b); });
-                                rawHtml = keys
-                                    .map(function (k) {
-                                        var ch = chaptersObj[k];
-                                        return '<section class="volume-chapter">' + ((ch && ch.content) || "") + '</section>';
-                                    })
-                                    .join('\n<hr class="volume-divider" />\n');
-                            }
-                        }
-                        return [3 /*break*/, 9];
-                    case 6:
-                        return [4 /*yield*/, fetchApi(chapterPath.startsWith("http") ? chapterPath : "" + this.site + chapterPath)];
-                    case 7:
-                        res = _b.sent();
-                        if (!res.ok) return [3 /*break*/, 9];
-                        return [4 /*yield*/, res.text()];
-                    case 8:
-                        rawHtml = _b.sent();
-                        _b.label = 9;
-                    case 9:
-                        return [2 /*return*/, this.sanitizeChapterHtml(rawHtml)];
+        const volumes = data.volumes || [];
+        const isCanonical = this.canonicalIds.has(id.toLowerCase());
+        const chapters = volumes.map((volume, index) => {
+            const position = index + 1;
+            const numStr = String(position).padStart(2, "0");
+            const rawTitle = volume.title || ("Volume " + position);
+            const name = "Vol. " + numStr + ": " + rawTitle;
+            const path = isCanonical
+                ? "/canonical/" + id + "/" + volume.id
+                : "/api/novels/" + id + "/volume/" + volume.id;
+            return {
+                name: name,
+                path: path,
+                chapterNumber: position
+            };
+        });
+
+        return {
+            path: novelPath,
+            name: data.title,
+            cover: this.formatCover(data.cover),
+            summary: data.description,
+            author: data.author,
+            genres: genres,
+            status: NovelStatus.Ongoing,
+            chapters: chapters
+        };
+    }
+
+    async parseChapter(chapterPath) {
+        let rawHtml = "";
+
+        if (chapterPath.startsWith("/webnovel/")) {
+            const parts = chapterPath.replace(/^\/webnovel\//, "").split("/");
+            const id = parts[0];
+            const chapterId = parts[1];
+            const chUrl = this.site + "/assets/" + id + "/chapters/" + chapterId + ".json";
+            const res = await fetchApi(chUrl);
+            if (!res.ok) {
+                throw new Error("Failed to fetch chapter: HTTP " + res.status);
+            }
+            const chData = await this.safeJson(res);
+            rawHtml = chData.contentHtml || chData.content || "";
+        } else if (chapterPath.startsWith("/canonical/")) {
+            const parts = chapterPath.replace(/^\/canonical\//, "").split("/");
+            const id = parts[0];
+            const volumeId = parts[1];
+            const chapterKey = parts[2];
+
+            const cacheUrl = this.site + "/assets/cache/" + id + "/" + volumeId + ".json";
+            const res = await fetchApi(cacheUrl);
+            if (!res.ok) {
+                if (res.status === 404) {
+                    throw new Error("This volume is not yet available on COTE Reader (HTTP 404).");
                 }
-            });
-        });
-    };
+                throw new Error("Failed to fetch volume: HTTP " + res.status);
+            }
 
-    CoteReader.prototype.sanitizeChapterHtml = function (html) {
+            const json = await this.safeJson(res);
+            if (chapterKey && json[chapterKey]) {
+                rawHtml = json[chapterKey].content || "";
+            } else {
+                const keys = Object.keys(json).sort((a, b) => Number(a) - Number(b));
+                rawHtml = keys
+                    .map((k) => {
+                        const item = json[k];
+                        const title = item.title || ("Chapter " + k);
+                        return '<section class="volume-chapter"><h2 class="volume-chapter-title">' + title + '</h2>' + (item.content || "") + '</section>';
+                    })
+                    .join('\n<hr class="volume-divider" />\n');
+            }
+        } else if (chapterPath.startsWith("/api/novels/")) {
+            const parts = chapterPath.replace(/^\/api\/novels\//, "").split("/");
+            const id = parts[0];
+            const volumeId = parts[2];
+            const chapterIndex = parts[3];
+
+            const volUrl = this.site + "/api/novels/" + id + "/volume/" + volumeId;
+            let lastErr = null;
+            let volData = null;
+
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const res = await fetchApi(volUrl);
+                    if (res.status === 503) {
+                        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+                        continue;
+                    }
+                    if (!res.ok) {
+                        throw new Error("Failed to fetch volume: HTTP " + res.status);
+                    }
+                    volData = await this.safeJson(res);
+                    break;
+                } catch (e) {
+                    lastErr = e;
+                    if (attempt < 2) {
+                        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+                    }
+                }
+            }
+
+            if (!volData) {
+                if (lastErr && lastErr.message && lastErr.message.includes("503")) {
+                    throw new Error("Remote server is busy (HTTP 503: Cloudflare Worker limit). Please retry in a moment.");
+                }
+                throw (
+                    lastErr ||
+                    new Error("Failed to load volume: Connection was interrupted. Please retry in a moment.")
+                );
+            }
+
+            if (chapterIndex && volData.chapters && volData.chapters[chapterIndex]) {
+                rawHtml = volData.chapters[chapterIndex].content || "";
+            } else {
+                const chaptersObj = volData.chapters || {};
+                const toc = volData.toc || [];
+                if (toc.length > 0) {
+                    rawHtml = toc
+                        .map((item) => {
+                            const ch = chaptersObj[item.chapterIndex];
+                            return '<section class="volume-chapter"><h2 class="volume-chapter-title">' + item.title + '</h2>' + ((ch && ch.content) || "") + '</section>';
+                        })
+                        .join('\n<hr class="volume-divider" />\n');
+                } else {
+                    const keys = Object.keys(chaptersObj).sort((a, b) => Number(a) - Number(b));
+                    rawHtml = keys
+                        .map((k) => '<section class="volume-chapter">' + ((chaptersObj[k] && chaptersObj[k].content) || "") + '</section>')
+                        .join('\n<hr class="volume-divider" />\n');
+                }
+            }
+        } else {
+            const res = await fetchApi(chapterPath.startsWith("http") ? chapterPath : this.site + chapterPath);
+            if (res.ok) {
+                rawHtml = await res.text();
+            }
+        }
+
+        return this.sanitizeChapterHtml(rawHtml);
+    }
+
+    sanitizeChapterHtml(html) {
         if (!html) return "";
-        var cleaned = html.replace(/(<img[^>]+src=["'])(\/assets\/[^"']+)(["'])/gi, "$1" + this.site + "$2$3");
+        let cleaned = html.replace(/(<img[^>]+src=["'])(\/assets\/[^"']+)(["'])/gi, "$1" + this.site + "$2$3");
         cleaned = cleaned.replace(/<picture>[\s\S]*?<img([^>]+src=["']https?:\/\/[^"']+["'][^>]*)>[\s\S]*?<\/picture>/gi, "<img$1>");
         return cleaned;
-    };
-
-    return CoteReader;
-}());
-
-var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
-    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-    function verb(n) { return function (v) { return step([n, v]); }; }
-    function step(op) {
-        if (f) throw new TypeError("Generator is already executing.");
-        while (g && (g = 0, op[0] && (_ = 0)), _) try {
-            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-            if (y = 0, t) op = [op[0] & 2, t.value];
-            switch (op[0]) {
-                case 0: case 1: t = op; break;
-                case 4: _.label++; return { value: op[1], done: false };
-                case 5: _.label++; y = op[1]; op = [0]; continue;
-                case 7: op = _.ops.pop(); _.trys.pop(); continue;
-                default:
-                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                    if (t[2]) _.ops.pop();
-                    _.trys.pop(); continue;
-            }
-            op = body.call(thisArg, _);
-        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
-};
+}
 
-var pluginInstance = new CoteReader();
-exports.default = pluginInstance;
+exports.default = new CoteReader();

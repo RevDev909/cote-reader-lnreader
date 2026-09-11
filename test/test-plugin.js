@@ -8,7 +8,7 @@ async function testSuite() {
   assert.strictEqual(plugin.id, 'cotereader');
   assert.strictEqual(plugin.name, 'COTE Reader');
   assert.strictEqual(plugin.site, 'https://cote-reader.me');
-  assert.strictEqual(plugin.version, '1.0.4');
+  assert.strictEqual(plugin.version, '1.0.5');
   assert.ok(plugin.filters.tag);
   console.log('✓ metadata validation');
 
@@ -56,7 +56,15 @@ async function testSuite() {
   assert.ok(!chapterHtml.includes('src="/assets/'));
   console.log(`✓ parseChapter canonical volume (${chapterHtml.length} bytes)`);
 
-  // 8. Non-canonical novel (Konosuba - 3079)
+  // 8. Webnovel format (ORV)
+  const orv = await plugin.parseNovel('/novel/orv');
+  assert.strictEqual(orv.name, "Omniscient Reader's Viewpoint");
+  assert.ok(Array.isArray(orv.chapters) && orv.chapters.length >= 500);
+  const orvCh1Html = await plugin.parseChapter(orv.chapters[0].path);
+  assert.ok(orvCh1Html && orvCh1Html.length > 100);
+  console.log(`✓ parseNovel & parseChapter webnovel ORV (${orv.chapters.length} chapters, ch1: ${orvCh1Html.length} bytes)`);
+
+  // 9. Non-canonical novel (Konosuba - 3079)
   const konosuba = await plugin.parseNovel('/novel/3079');
   assert.strictEqual(konosuba.name, "Konosuba: God's Blessing on This Wonderful World!");
   assert.strictEqual(konosuba.path, '/novel/3079');
@@ -65,21 +73,21 @@ async function testSuite() {
   console.log(`✓ parseNovel non-canonical (all ${konosuba.chapters.length} volumes in single ordered list)`);
   console.log(`   Sample: "${konosuba.chapters[0].name}" -> ${konosuba.chapters[0].path}`);
 
-  // 9. Non-canonical volume chapter reading
+  // 10. Non-canonical volume chapter reading with safeJson and retry
   const konosubaVolPath = konosuba.chapters[0].path;
   try {
     const konosubaHtml = await plugin.parseChapter(konosubaVolPath);
     assert.ok(konosubaHtml && konosubaHtml.length > 100);
     console.log(`✓ parseChapter non-canonical volume (${konosubaHtml.length} bytes)`);
   } catch (err) {
-    if (err.message.includes('503')) {
-      console.log('⚠ parseChapter non-canonical volume: upstream worker busy (HTTP 503 handled gracefully)');
+    if (err.message.includes('503') || err.message.includes('busy')) {
+      console.log('⚠ parseChapter non-canonical volume: upstream worker busy (handled gracefully)');
     } else {
       throw err;
     }
   }
 
-  console.log('\n9 passed (100%)\n');
+  console.log('\n10 passed (100%)\n');
 }
 
 testSuite().catch(err => {
