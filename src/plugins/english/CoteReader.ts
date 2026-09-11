@@ -47,7 +47,7 @@ class CoteReader implements Plugin.PluginBase {
   name = 'COTE Reader';
   site = 'https://cote-reader.me';
   icon = 'src/en/cotereader/icon.png';
-  version = '1.0.3';
+  version = '1.0.4';
 
   private canonicalIds = new Set([
     'cote',
@@ -255,10 +255,19 @@ class CoteReader implements Plugin.PluginBase {
       const chapterIndex = parts[3];
 
       const volUrl = `${this.site}/api/novels/${id}/volume/${volumeId}`;
-      const res = await fetchApi(volUrl);
+      let res = await fetchApi(volUrl);
+      if (res.status === 503) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        res = await fetchApi(volUrl);
+        if (res.status === 503) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          res = await fetchApi(volUrl);
+        }
+      }
+
       if (!res.ok) {
         if (res.status === 503) {
-          throw new Error('Remote server is temporarily busy (HTTP 503). Please retry in a moment.');
+          throw new Error('Remote server is busy (HTTP 503: Cloudflare Worker limit). Please retry in a moment.');
         }
         throw new Error(`Failed to fetch volume: HTTP ${res.status}`);
       }

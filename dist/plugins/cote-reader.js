@@ -63,7 +63,7 @@ var CoteReader = /** @class */ (function () {
         this.name = "COTE Reader";
         this.site = "https://cote-reader.me";
         this.icon = "src/en/cotereader/icon.png";
-        this.version = "1.0.3";
+        this.version = "1.0.4";
         this.canonicalIds = new Set([
             "cote",
             "lotm",
@@ -322,14 +322,23 @@ var CoteReader = /** @class */ (function () {
                         return [4 /*yield*/, fetchApi(volUrl)];
                     case 4:
                         res = _b.sent();
+                        if (!(res.status === 503)) return [3 /*break*/, 7];
+                        return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, 1000); })];
+                    case 5:
+                        _b.sent();
+                        return [4 /*yield*/, fetchApi(volUrl)];
+                    case 6:
+                        res = _b.sent();
+                        _b.label = 7;
+                    case 7:
                         if (!res.ok) {
                             if (res.status === 503) {
-                                throw new Error("Remote server is temporarily busy (HTTP 503). Please retry in a moment.");
+                                throw new Error("Remote server is busy (HTTP 503: Cloudflare Worker limit). Please retry in a moment.");
                             }
                             throw new Error("Failed to fetch volume: HTTP " + res.status);
                         }
                         return [4 /*yield*/, res.json()];
-                    case 5:
+                    case 8:
                         volData = _b.sent();
                         if (chapterIndex && volData.chapters && volData.chapters[chapterIndex]) {
                             rawHtml = volData.chapters[chapterIndex].content || "";
